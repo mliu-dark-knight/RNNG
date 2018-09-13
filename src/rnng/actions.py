@@ -1,4 +1,4 @@
-from rnng.typing import Action, NTLabel, Word
+from rnng.typing_ import Action, NTLabel, Word
 
 
 REDUCE: Action = 'REDUCE'

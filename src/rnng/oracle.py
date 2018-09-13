@@ -4,7 +4,7 @@ import abc
 from nltk.tree import Tree
 
 from rnng.actions import GEN, NT, REDUCE, SHIFT, get_nonterm, get_word, is_gen, is_nt
-from rnng.typing import Action, POSTag, Word
+from rnng.typing_ import Action, POSTag, Word
 
 
 class Oracle(metaclass=abc.ABCMeta):

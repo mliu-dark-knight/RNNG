@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 
-from rnng.typing import WordId, NTId, ActionId
+from rnng.typing_ import WordId, NTId, ActionId
 
 
 class EmptyStackError(Exception):
@@ -126,7 +126,6 @@ class DiscRNNG(nn.Module):
 
     def __init__(self,
                  num_words: int,
-                 num_pos: int,
                  num_nt: int,
                  word_embedding_size: int = 32,
                  nt_embedding_size: int = 60,
@@ -138,7 +137,6 @@ class DiscRNNG(nn.Module):
                  ) -> None:
         super().__init__()
         self.num_words = num_words
-        self.num_pos = num_pos
         self.num_nt = num_nt
         self.word_embedding_size = word_embedding_size
         self.nt_embedding_size = nt_embedding_size
@@ -223,7 +221,7 @@ class DiscRNNG(nn.Module):
 
     def reset_parameters(self) -> None:
         # Embeddings
-        for name in 'word pos nt action'.split():
+        for name in 'word nt action'.split():
             embedding = getattr(self, f'{name}_embedding')
             embedding.reset_parameters()
 

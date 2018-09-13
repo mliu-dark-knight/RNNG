@@ -29,7 +29,6 @@ class Trainer(object):
                  save_to: str,
                  dev_corpus: Optional[str] = None,
                  encoding: str = 'utf-8',
-                 rnng_type: str = 'discriminative',
                  lower: bool = True,
                  min_freq: int = 2,
                  word_embedding_size: int = 32,
@@ -201,7 +200,7 @@ class Trainer(object):
         llh = self.model(words, pos_tags, actions)
         training = self.model.training
         self.model.eval()
-        _, hyp_tree = self.model.decode(words, pos_tags)
+        _, hyp_tree = self.model.decode(words)
         self.model.train(training)
         hyp_tree = id2parsetree(
             hyp_tree, self.NONTERMS.vocab.itos, self.WORDS.vocab.itos)

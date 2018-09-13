@@ -201,25 +201,18 @@ def test_log_softmax_with_invalid_restrictions_dimension():
 
 class TestDiscRNNG(object):
     word2id = {'John': 0, 'loves': 1, 'Mary': 2}
-    pos2id = {'NNP': 0, 'VBZ': 1}
     nt2id = {'S': 0, 'NP': 1, 'VP': 2}
     num_words = len(word2id)
-    num_pos = len(pos2id)
     num_nt = len(nt2id)
 
     def make_parser(self):
         return DiscRNNG(
-            self.num_words, self.num_pos, self.num_nt)
+            self.num_words, self.num_nt)
 
     def make_words(self, words=None):
         if words is None:
             words = 'John loves Mary'.split()
         return Variable(torch.LongTensor([self.word2id[x] for x in words]))
-
-    def make_pos_tags(self, pos_tags=None):
-        if pos_tags is None:
-            pos_tags = 'NNP VBZ NNP'.split()
-        return Variable(torch.LongTensor([self.pos2id[x] for x in pos_tags]))
 
     def make_actions(self, actions=None):
         if actions is None:
@@ -376,66 +369,59 @@ class TestDiscRNNG(object):
 
     def test_forward(self):
         words = self.make_words()
-        pos_tags = self.make_pos_tags()
         actions = self.make_actions()
         parser = self.make_parser()
 
-        llh = parser(words, pos_tags, actions)
+        llh = parser(words, actions)
 
         assert isinstance(llh, Variable)
-        assert llh.size() == (1,)
+        assert llh.dtype == torch.float32
         llh.backward()
         assert parser.finished
 
     def test_forward_with_shift_when_buffer_is_empty(self):
         words = self.make_words()
-        pos_tags = self.make_pos_tags()
         actions = self.make_actions([
             NT('S'), SHIFT, SHIFT, SHIFT, SHIFT])
         parser = self.make_parser()
-        llh = parser(words, pos_tags, actions)
+        llh = parser(words, actions)
         assert llh.exp().data[0] == pytest.approx(0, abs=1e-7)
 
     def test_forward_with_shift_when_no_open_nt_in_the_stack(self):
         words = self.make_words()
-        pos_tags = self.make_pos_tags()
         actions = self.make_actions([SHIFT])
         parser = self.make_parser()
-        llh = parser(words, pos_tags, actions)
+        llh = parser(words, actions)
         assert llh.exp().data[0] == pytest.approx(0, abs=1e-7)
 
     def test_forward_with_reduce_when_tos_is_an_open_nt(self):
         words = self.make_words()
-        pos_tags = self.make_pos_tags()
         actions = self.make_actions([NT('S'), REDUCE])
         parser = self.make_parser()
-        llh = parser(words, pos_tags, actions)
+        llh = parser(words, actions)
         assert llh.exp().data[0] == pytest.approx(0, abs=1e-7)
 
     def test_forward_with_reduce_when_only_single_open_nt_and_buffer_is_not_empty(self):
         words = self.make_words()
-        pos_tags = self.make_pos_tags()
         actions = self.make_actions([NT('S'), SHIFT, REDUCE])
         parser = self.make_parser()
-        llh = parser(words, pos_tags, actions)
+        llh = parser(words, actions)
         assert llh.exp().data[0] == pytest.approx(0, abs=1e-7)
 
     def test_forward_with_push_nt_when_buffer_is_empty(self):
         words = self.make_words()
-        pos_tags = self.make_pos_tags()
         actions = self.make_actions([
             NT('S'), SHIFT, SHIFT, SHIFT, NT('NP')])
         parser = self.make_parser()
-        llh = parser(words, pos_tags, actions)
+        llh = parser(words, actions)
         assert llh.exp().data[0] == pytest.approx(0, abs=1e-7)
 
     def test_forward_with_push_nt_when_maximum_number_of_open_nt_is_reached(self):
         DiscRNNG.MAX_OPEN_NT = 2
         words = self.make_words()
-        pos_tags = self.make_pos_tags()
         actions = self.make_actions([NT('S')] * (DiscRNNG.MAX_OPEN_NT+1))
         parser = self.make_parser()
-        llh = parser(words, pos_tags, actions)
+        llh = parser(words, actions)
         assert llh.exp().data[0] == pytest.approx(0, abs=1e-7)
 
     def test_forward_with_bad_dimensions(self):
@@ -462,10 +448,9 @@ class TestDiscRNNG(object):
 
     def test_decode(self):
         words = self.make_words()
-        pos_tags = self.make_pos_tags()
         parser = self.make_parser()
 
-        best_action_ids, parse_tree = parser.decode(words, pos_tags)
+        best_action_ids, parse_tree = parser.decode(words)
 
         assert isinstance(best_action_ids, list)
         assert isinstance(parse_tree, Tree)
