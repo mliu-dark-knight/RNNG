@@ -39,8 +39,6 @@ class Trainer(object):
                  dropout: float = 0.5,
                  learning_rate: float = 0.001,
                  max_epochs: int = 20,
-                 evalb: Optional[str] = None,
-                 evalb_params: Optional[str] = None,
                  device: int = -1,
                  seed: int = 25122017,
                  log_interval: int = 10,
@@ -53,8 +51,6 @@ class Trainer(object):
             formatter = logging.Formatter('%(levelname)s - %(name)s - %(message)s')
             handler.setFormatter(formatter)
             logger.addHandler(handler)
-        if evalb is None:
-            evalb = 'evalb'
 
         self.train_corpus = train_corpus
         self.save_to = save_to
@@ -72,8 +68,6 @@ class Trainer(object):
         self.dropout = dropout
         self.learning_rate = learning_rate
         self.max_epochs = max_epochs
-        self.evalb = evalb
-        self.evalb_params = evalb_params
         self.device = device
         self.seed = seed
         self.log_interval = log_interval

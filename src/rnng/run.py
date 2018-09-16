@@ -11,7 +11,7 @@ def make_parser(subparsers=None) -> argparse.ArgumentParser:
         parser = subparsers.add_parser('train', description=description)
 
     parser.add_argument(
-        '-t', '--train-corpus', required=False, default='../../ptb/dev-gen.oracle',
+        '-t', '--train-corpus', required=False, default='../../ptb/train-gen.oracle',
         metavar='FILE', help='path to train corpus')
     parser.add_argument(
         '-d', '--dev-corpus', required=False, default='../../ptb/dev-gen.oracle',
@@ -55,12 +55,8 @@ def make_parser(subparsers=None) -> argparse.ArgumentParser:
         '--max-epochs', type=int, default=20, metavar='NUMBER',
         help='maximum number of epochs to train (default: 20)')
     parser.add_argument(
-        '--evalb', metavar='FILE', help='evalb executable file (default: evalb)')
-    parser.add_argument(
-        '--evalb-params', metavar='FILE', help='evalb params file')
-    parser.add_argument(
-        '--log-interval', type=int, default=10, metavar='NUMBER',
-        help='print logs every this number of iterations (default: 10)')
+        '--log-interval', type=int, default=1000, metavar='NUMBER',
+        help='print logs every this number of iterations (default: 1000)')
     parser.add_argument(
         '--seed', type=int, default=25122017, help='random seed (default: 25122017)')
     parser.add_argument(
