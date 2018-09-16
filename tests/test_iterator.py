@@ -5,7 +5,6 @@ from torchtext.data import Dataset, Example, Field
 
 from rnng.iterator import SimpleIterator
 
-
 random.seed(12345)
 
 

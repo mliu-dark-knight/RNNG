@@ -1,12 +1,11 @@
-from nltk.tree import Tree
-from torch.autograd import Variable
 import pytest
 import torch
 import torch.nn as nn
+from nltk.tree import Tree
+from torch.autograd import Variable
 
 from rnng.actions import NT, REDUCE, SHIFT, get_nonterm
 from rnng.models import DiscRNNG, EmptyStackError, StackLSTM, log_softmax
-
 
 torch.manual_seed(12345)
 

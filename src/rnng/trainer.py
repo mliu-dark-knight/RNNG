@@ -227,7 +227,7 @@ class Trainer(object):
 
     def on_forward(self, state: dict) -> None:
         elapsed_time = self.batch_timer.value()
-        self.loss_meter.add(state['loss'].data[0])
+        self.loss_meter.add(state['loss'].item())
         self.speed_meter.add(state['sample'].words.size(1) / elapsed_time)
         if state['train'] and (state['t'] + 1) % self.log_interval == 0:
             # f1_score = self.compute_f1()
