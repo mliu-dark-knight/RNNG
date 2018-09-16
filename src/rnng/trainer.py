@@ -1,26 +1,25 @@
-from typing import Optional, Tuple
 import json
 import logging
 import os
 import random
 import re
-import subprocess
 import tarfile
+from typing import *
 
-from nltk.corpus.reader import BracketParseCorpusReader
-from torch.autograd import Variable
-from torchtext.data import Dataset, Field
 import dill
 import torch
 import torch.optim as optim
 import torchnet as tnt
+from torch.autograd import Variable
+from torchtext.data import Dataset, Field
 
 from rnng.example import make_example
 from rnng.fields import ActionField
 from rnng.iterator import SimpleIterator
 from rnng.models import DiscRNNG
-from rnng.oracle import DiscOracle
-from rnng.utils import add_dummy_pos, get_evalb_f1, id2parsetree
+from rnng.oracle import Oracle
+from rnng.typing_ import *
+from rnng.utils import add_dummy_pos, id2parsetree, compute_f1
 
 
 class Trainer(object):
@@ -32,7 +31,6 @@ class Trainer(object):
                  lower: bool = True,
                  min_freq: int = 2,
                  word_embedding_size: int = 32,
-                 pos_embedding_size: int = 12,
                  nt_embedding_size: int = 60,
                  action_embedding_size: int = 16,
                  input_size: int = 128,
@@ -66,7 +64,6 @@ class Trainer(object):
         self.lower = lower
         self.min_freq = min_freq
         self.word_embedding_size = word_embedding_size
-        self.pos_embedding_size = pos_embedding_size
         self.nt_embedding_size = nt_embedding_size
         self.action_embedding_size = action_embedding_size
         self.input_size = input_size
@@ -147,10 +144,9 @@ class Trainer(object):
     def build_model(self) -> None:
         self.logger.info('Building model')
         model_args = (
-            self.num_words, self.num_pos, self.num_nt)
+            self.num_words, self.num_nt)
         model_kwargs = dict(
             word_embedding_size=self.word_embedding_size,
-            pos_embedding_size=self.pos_embedding_size,
             nt_embedding_size=self.nt_embedding_size,
             action_embedding_size=self.action_embedding_size,
             input_size=self.input_size,
@@ -197,7 +193,7 @@ class Trainer(object):
         words = sample.words.squeeze(1)
         pos_tags = sample.pos_tags.squeeze(1)
         actions = sample.actions.squeeze(1)
-        llh = self.model(words, pos_tags, actions)
+        llh = self.model(words, actions)
         training = self.model.training
         self.model.eval()
         _, hyp_tree = self.model.decode(words)
@@ -226,7 +222,7 @@ class Trainer(object):
         actions = [self.ACTIONS.vocab.itos[x] for x in sample.actions.squeeze(1).data]
         pos_tags = [self.POS_TAGS.vocab.itos[x] for x in sample.pos_tags.squeeze(1).data]
         words = [self.WORDS.vocab.itos[x] for x in sample.words.squeeze(1).data]
-        tree = DiscOracle(actions, pos_tags, words).to_tree()
+        tree = Oracle(actions, pos_tags, words).to_tree()
         self.ref_trees.append(self.squeeze_whitespaces(str(tree)))
 
     def on_forward(self, state: dict) -> None:
@@ -234,13 +230,13 @@ class Trainer(object):
         self.loss_meter.add(state['loss'].data[0])
         self.speed_meter.add(state['sample'].words.size(1) / elapsed_time)
         if state['train'] and (state['t'] + 1) % self.log_interval == 0:
-            f1_score = self.compute_f1()
+            # f1_score = self.compute_f1()
             epoch = (state['t'] + 1) / len(state['iterator'])
             loss, _ = self.loss_meter.value()
             speed, _ = self.speed_meter.value()
             self.logger.info(
-                'Epoch %.4f (%.4fs): %.2f samples/sec | loss %.4f | F1 %.2f',
-                epoch, elapsed_time, speed, loss, f1_score)
+                'Epoch %.4f (%.4fs): %.2f samples/sec | loss %.4f',
+                epoch, elapsed_time, speed, loss)
 
     def on_end_epoch(self, state: dict) -> None:
         iterator = SimpleIterator(self.train_dataset, train=False, device=self.device)
@@ -269,9 +265,24 @@ class Trainer(object):
             self.save_artifacts()
 
     def make_dataset(self, corpus: str) -> Dataset:
-        reader = BracketParseCorpusReader(
-            *os.path.split(corpus), encoding=self.encoding, detect_blocks='sexpr')
-        oracles = [DiscOracle.from_tree(t) for t in reader.parsed_sents()]
+        oracles: List[Oracle] = []
+        with open(corpus) as f:
+            while True:
+                line = f.readline()
+                if line == '':
+                    break
+                if line.startswith('#'):
+                    actions: List[Action] = []
+                    words: List[Word] = f.readline().rstrip().split()
+                    next(f)
+                    while True:
+                        line = f.readline().rstrip()
+                        if not line:
+                            break
+                        actions.append(line)
+                    pos_tags = ['XX' for _ in words]
+                    oracles.append(Oracle(actions, pos_tags, words))
+
         examples = [make_example(x, self.fields) for x in oracles]
         return Dataset(examples, self.fields)
 
@@ -294,17 +305,12 @@ class Trainer(object):
         torch.save(self.model.state_dict(), self.model_params_path)
 
     def compute_f1(self) -> float:
-        ref_fname = os.path.join(self.save_to, 'reference.bracket')
-        hyp_fname = os.path.join(self.save_to, 'hypothesis.bracket')
-        with open(ref_fname, 'w') as ref_file, open(hyp_fname, 'w') as hyp_file:
-            ref_file.write('\n'.join(self.ref_trees))
-            hyp_file.write('\n'.join(self.hyp_trees))
-        if self.evalb_params is None:
-            args = [self.evalb, ref_file.name, hyp_file.name]
-        else:
-            args = [self.evalb, '-p', self.evalb_params, ref_fname, hyp_fname]
-        res = subprocess.run(args, stdout=subprocess.PIPE, encoding='utf-8')
-        return get_evalb_f1(res.stdout)
+        # ref_fname = os.path.join(self.save_to, 'reference.txt')
+        # hyp_fname = os.path.join(self.save_to, 'hypothesis.txt')
+        # with open(ref_fname, 'w') as ref_file, open(hyp_fname, 'w') as hyp_file:
+        #     ref_file.write('\n'.join(self.ref_trees))
+        #     hyp_file.write('\n'.join(self.hyp_trees))
+        return compute_f1(self.ref_trees, self.hyp_trees)
 
     @staticmethod
     def squeeze_whitespaces(s: str) -> str:

@@ -1,12 +1,12 @@
+from typing import Dict
 from typing import List, NamedTuple, Optional, Sequence, Sized, Tuple, Union, cast
-from typing import Dict  # noqa
 
-from nltk.tree import Tree
-from torch.autograd import Variable
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
+from nltk.tree import Tree
+from torch.autograd import Variable
 
 from rnng.typing_ import WordId, NTId, ActionId
 
@@ -55,12 +55,12 @@ class StackLSTM(nn.Module, Sized):
     def reset_parameters(self) -> None:
         for name, param in self.lstm.named_parameters():
             if name.startswith('weight'):
-                init.orthogonal(param)
+                init.orthogonal_(param)
             else:
                 assert name.startswith('bias')
-                init.constant(param, 0.)
-        init.constant(self.h0, 0.)
-        init.constant(self.c0, 0.)
+                init.constant_(param, 0.)
+        init.constant_(self.h0, 0.)
+        init.constant_(self.c0, 0.)
 
     def forward(self, inputs: Variable) -> Tuple[Variable, Variable]:
         if inputs.size() != (self.input_size,):
@@ -102,7 +102,7 @@ class StackLSTM(nn.Module, Sized):
 
 def log_softmax(inputs: Variable, restrictions: Optional[torch.LongTensor] = None) -> Variable:
     if restrictions is None:
-        return F.log_softmax(inputs)
+        return F.log_softmax(inputs, dim=1)
 
     if restrictions.dim() != 1:
         raise ValueError(f'restrictions must have dimension of 1, got {restrictions.dim()}')
@@ -110,7 +110,7 @@ def log_softmax(inputs: Variable, restrictions: Optional[torch.LongTensor] = Non
     addend = Variable(
         inputs.data.new(inputs.size()).zero_().index_fill_(
             inputs.dim() - 1, restrictions, -float('inf')))
-    return F.log_softmax(inputs + addend)
+    return F.log_softmax(inputs + addend, dim=1)
 
 
 class StackElement(NamedTuple):
@@ -235,27 +235,27 @@ class DiscRNNG(nn.Module):
             lstm = getattr(self, f'{name}_composer')
             for pname, pval in lstm.named_parameters():
                 if pname.startswith('weight'):
-                    init.orthogonal(pval)
+                    init.orthogonal_(pval)
                 else:
                     assert pname.startswith('bias')
-                    init.constant(pval, 0.)
+                    init.constant_(pval, 0.)
 
         # Transformations
         for name in 'word nt action'.split():
             layer = getattr(self, f'{name}2encoder')
-            init.kaiming_normal(layer[0].weight)
-            init.constant(layer[0].bias, 0.)
-        init.kaiming_normal(self.fwdbwd2composed[0].weight)
-        init.constant(self.fwdbwd2composed[0].bias, 0.)
-        init.kaiming_normal(self.encoders2summary[1].weight)
-        init.constant(self.encoders2summary[1].bias, 0.)
-        init.kaiming_normal(self.summary2actionlogprobs.weight)
-        init.constant(self.summary2actionlogprobs.bias, 0.)
+            init.kaiming_normal_(layer[0].weight)
+            init.constant_(layer[0].bias, 0.)
+        init.kaiming_normal_(self.fwdbwd2composed[0].weight)
+        init.constant_(self.fwdbwd2composed[0].bias, 0.)
+        init.kaiming_normal_(self.encoders2summary[1].weight)
+        init.constant_(self.encoders2summary[1].bias, 0.)
+        init.kaiming_normal_(self.summary2actionlogprobs.weight)
+        init.constant_(self.summary2actionlogprobs.bias, 0.)
 
         # Guards
         for name in 'stack buffer history'.split():
             guard = getattr(self, f'{name}_guard')
-            init.constant(guard, 0.)
+            init.constant_(guard, 0.)
 
     def forward(self,
                 words: Variable,
@@ -293,7 +293,7 @@ class DiscRNNG(nn.Module):
         self._start(words)
         while not self.finished:
             log_probs = self._compute_action_log_probs()
-            max_action_id = torch.max(log_probs, dim=0)[1].data[0]
+            max_action_id = torch.max(log_probs, dim=0)[1].item()
             if max_action_id == self.SHIFT_ID:
                 if self._check_shift():
                     self._shift()

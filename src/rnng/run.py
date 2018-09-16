@@ -11,17 +11,16 @@ def make_parser(subparsers=None) -> argparse.ArgumentParser:
         parser = subparsers.add_parser('train', description=description)
 
     parser.add_argument(
-        '-t', '--train-corpus', required=True, metavar='FILE', help='path to train corpus')
+        '-t', '--train-corpus', required=False, default='../../ptb/dev-gen.oracle',
+        metavar='FILE', help='path to train corpus')
     parser.add_argument(
-        '-s', '--save-to', required=True, metavar='DIR',
+        '-d', '--dev-corpus', required=False, default='../../ptb/dev-gen.oracle',
+        metavar='FILE', help='path to dev corpus')
+    parser.add_argument(
+        '-s', '--save-to', required=False, default='../../model/', metavar='DIR',
         help='directory to save the training artifacts')
     parser.add_argument(
-        '-d', '--dev-corpus', metavar='FILE', help='path to dev corpus')
-    parser.add_argument(
         '--encoding', default='utf-8', help='file encoding to use (default: utf-8)')
-    parser.add_argument(
-        '--rnng-type', choices='discriminative'.split(), metavar='TYPE',
-        default='discriminative', help='type of RNNG to train (default: discriminative)')
     parser.add_argument(
         '--no-lower', action='store_false', dest='lower',
         help='whether not to lowercase the words')
@@ -31,9 +30,6 @@ def make_parser(subparsers=None) -> argparse.ArgumentParser:
     parser.add_argument(
         '--word-embedding-size', type=int, default=32, metavar='NUMBER',
         help='dimension of word embeddings (default: 32)')
-    parser.add_argument(
-        '--pos-embedding-size', type=int, default=12, metavar='NUMBER',
-        help='dimension of POS tag embeddings (default: 12)')
     parser.add_argument(
         '--nt-embedding-size', type=int, default=60, metavar='NUMBER',
         help='dimension of nonterminal embeddings (default: 12)')
