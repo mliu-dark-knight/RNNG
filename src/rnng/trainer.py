@@ -185,7 +185,6 @@ class Trainer(object):
 
     def network(self, sample) -> Tuple[Variable, None]:
         words = sample.words.squeeze(1)
-        pos_tags = sample.pos_tags.squeeze(1)
         actions = sample.actions.squeeze(1)
         llh = self.model(words, actions)
         training = self.model.training
