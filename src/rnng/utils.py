@@ -14,5 +14,8 @@ def id2parsetree(tree, id2nonterm, id2word):
     return Tree(id2nonterm[tree.label()], children)
 
 def compute_f1(f_gold, f_test):
-    _scorer = scorer.Scorer()
-    return summary.summary(_scorer.score_corpus(f_gold, f_test)).bracker_fmeasure
+    try:
+        f1 = summary.summary(scorer.Scorer().score_corpus(f_gold, f_test)).bracker_fmeasure
+        return f1
+    except ZeroDivisionError:
+        return 0.0

@@ -1,8 +1,9 @@
 import argparse
+import os
 
 from rnng.trainer import Trainer
 
-import os
+
 def make_parser(subparsers=None) -> argparse.ArgumentParser:
     description = 'Train RNNG on a given corpus.'
     if subparsers is None:
@@ -55,7 +56,7 @@ def make_parser(subparsers=None) -> argparse.ArgumentParser:
         '--max-epochs', type=int, default=20, metavar='NUMBER',
         help='maximum number of epochs to train (default: 20)')
     parser.add_argument(
-        '--log-interval', type=int, default=1000, metavar='NUMBER',
+        '--log-interval', type=int, default=10, metavar='NUMBER',
         help='print logs every this number of iterations (default: 1000)')
     parser.add_argument(
         '--seed', type=int, default=25122017, help='random seed (default: 25122017)')

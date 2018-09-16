@@ -223,13 +223,13 @@ class Trainer(object):
         self.loss_meter.add(state['loss'].item())
         self.speed_meter.add(state['sample'].words.size(1) / elapsed_time)
         if state['train'] and (state['t'] + 1) % self.log_interval == 0:
-            # f1_score = self.compute_f1()
+            f1_score = self.compute_f1()
             epoch = (state['t'] + 1) / len(state['iterator'])
             loss, _ = self.loss_meter.value()
             speed, _ = self.speed_meter.value()
             self.logger.info(
-                'Epoch %.4f (%.4fs): %.2f samples/sec | loss %.4f',
-                epoch, elapsed_time, speed, loss)
+                'Epoch %.4f (%.4fs): %.2f samples/sec | loss %.4f | F1 %.2f',
+                epoch, elapsed_time, speed, loss, f1_score)
 
     def on_end_epoch(self, state: dict) -> None:
         iterator = SimpleIterator(self.train_dataset, train=False, device=self.device)
