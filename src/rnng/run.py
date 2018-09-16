@@ -2,7 +2,7 @@ import argparse
 
 from rnng.trainer import Trainer
 
-
+import os
 def make_parser(subparsers=None) -> argparse.ArgumentParser:
     description = 'Train RNNG on a given corpus.'
     if subparsers is None:
@@ -67,6 +67,9 @@ def make_parser(subparsers=None) -> argparse.ArgumentParser:
 
 
 def main(args: argparse.Namespace) -> None:
+    if args.device >= 0:
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device)
+        args.device = 0
     kwargs = vars(args)
     kwargs.pop('func', None)
     train_corpus = kwargs.pop('train_corpus')
