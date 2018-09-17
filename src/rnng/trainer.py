@@ -42,6 +42,7 @@ class Trainer(object):
                  device: int = -1,
                  seed: int = 25122017,
                  log_interval: int = 10,
+                 load_artifacts: bool = True,
                  logger: Optional[logging.Logger] = None) -> None:
         if logger is None:
             logger = logging.getLogger(__name__)
@@ -71,6 +72,7 @@ class Trainer(object):
         self.device = device
         self.seed = seed
         self.log_interval = log_interval
+        self.load_artifacts = load_artifacts
         self.logger = logger
 
         self.loss_meter = tnt.meter.AverageValueMeter()
@@ -81,6 +83,22 @@ class Trainer(object):
         self.engine = tnt.engine.Engine()
         self.ref_trees = []  # type: ignore
         self.hyp_trees = []  # type: ignore
+
+    @property
+    def num_words(self) -> int:
+        return len(self.WORDS.vocab)
+
+    @property
+    def num_pos(self) -> int:
+        return len(self.POS_TAGS.vocab)
+
+    @property
+    def num_nt(self) -> int:
+        return len(self.NONTERMS.vocab)
+
+    @property
+    def num_actions(self) -> int:
+        return len(self.ACTIONS.vocab)
 
     def set_random_seed(self) -> None:
         self.logger.info('Setting random seed to %d', self.seed)
@@ -117,6 +135,23 @@ class Trainer(object):
             self.dev_iterator = SimpleIterator(
                 self.dev_dataset, train=False, device=self.device)
 
+    def load_fields_vocabularies(self) -> None:
+        self.logger.info('Loading vocabularies')
+        fields = torch.load(self.fields_dict_path, pickle_module=dill)
+        self.WORDS = fields['words']
+        self.POS_TAGS = fields['pos_tags']
+        self.NONTERMS = fields['nonterms']
+        self.ACTIONS = fields['actions']
+
+        self.fields = [
+            ('actions', self.ACTIONS), ('nonterms', self.NONTERMS),
+            ('pos_tags', self.POS_TAGS), ('words', self.WORDS),
+        ]
+
+        self.logger.info(
+            'Found %d words, %d POS tags, %d nonterminals, and %d actions',
+            self.num_words, self.num_pos, self.num_nt, self.num_actions)
+
     def build_vocabularies(self) -> None:
         self.logger.info('Building vocabularies')
         self.WORDS.build_vocab(self.train_dataset, min_freq=self.min_freq)
@@ -124,16 +159,23 @@ class Trainer(object):
         self.NONTERMS.build_vocab(self.train_dataset)
         self.ACTIONS.build_vocab()
 
-        self.num_words = len(self.WORDS.vocab)
-        self.num_pos = len(self.POS_TAGS.vocab)
-        self.num_nt = len(self.NONTERMS.vocab)
-        self.num_actions = len(self.ACTIONS.vocab)
         self.logger.info(
             'Found %d words, %d POS tags, %d nonterminals, and %d actions',
             self.num_words, self.num_pos, self.num_nt, self.num_actions)
 
         self.logger.info('Saving fields dict to %s', self.fields_dict_path)
         torch.save(dict(self.fields), self.fields_dict_path, pickle_module=dill)
+
+    def load_model(self) -> None:
+        self.logger.info('Loading model')
+        with open(self.model_metadata_path) as f:
+            metadata = json.load(f)
+            model_args = metadata['args']
+            model_kwargs = metadata['kwargs']
+        self.model = DiscRNNG(*model_args, **model_kwargs)
+        if self.device >= 0:
+            self.model.cuda(self.device)
+        self.model.load_state_dict(torch.load(self.model_params_path))
 
     def build_model(self) -> None:
         self.logger.info('Building model')
@@ -163,10 +205,17 @@ class Trainer(object):
     def run(self) -> None:
         self.set_random_seed()
         self.prepare_for_serialization()
-        self.init_fields()
+        # this is a bit tricky, we have to load fields and vocabularies before building corpora
+        if self.load_artifacts:
+            self.load_fields_vocabularies()
+        else:
+            self.init_fields()
         self.process_corpora()
-        self.build_vocabularies()
-        self.build_model()
+        if self.load_artifacts:
+            self.load_model()
+        else:
+            self.build_vocabularies()
+            self.build_model()
         self.build_optimizer()
 
         self.engine.hooks['on_start'] = self.on_start
