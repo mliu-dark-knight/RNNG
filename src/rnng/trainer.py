@@ -111,6 +111,7 @@ class Trainer(object):
         self.fields_dict_path = os.path.join(self.save_to, 'fields_dict.pkl')
         self.model_metadata_path = os.path.join(self.save_to, 'model_metadata.json')
         self.model_params_path = os.path.join(self.save_to, 'model_params.pth')
+        self.optim_path = os.path.join(self.save_to, 'optim.pth')
         self.artifacts_path = os.path.join(self.save_to, 'artifacts.tar.gz')
 
     def init_fields(self) -> None:
@@ -177,6 +178,10 @@ class Trainer(object):
             self.model.cuda(self.device)
         self.model.load_state_dict(torch.load(self.model_params_path))
 
+        self.logger.info('Loading optimizer')
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        self.optimizer.load_state_dict(torch.load(self.optim_path))
+
     def build_model(self) -> None:
         self.logger.info('Building model')
         model_args = (
@@ -197,10 +202,9 @@ class Trainer(object):
         self.logger.info('Saving model metadata to %s', self.model_metadata_path)
         with open(self.model_metadata_path, 'w') as f:
             json.dump({'args': model_args, 'kwargs': model_kwargs}, f, sort_keys=True, indent=2)
-        self.save_model()
 
-    def build_optimizer(self) -> None:
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        self.save_model()
 
     def run(self) -> None:
         self.set_random_seed()
@@ -216,7 +220,6 @@ class Trainer(object):
         else:
             self.build_vocabularies()
             self.build_model()
-        self.build_optimizer()
 
         self.engine.hooks['on_start'] = self.on_start
         self.engine.hooks['on_start_epoch'] = self.on_start_epoch
@@ -340,7 +343,7 @@ class Trainer(object):
     def save_artifacts(self) -> None:
         self.logger.info('Saving training artifacts to %s', self.artifacts_path)
         with tarfile.open(self.artifacts_path, 'w:gz') as f:
-            artifact_names = 'fields_dict model_metadata model_params'.split()
+            artifact_names = 'fields_dict model_metadata model_params optim'.split()
             for name in artifact_names:
                 path = getattr(self, f'{name}_path')
                 f.add(path, arcname=os.path.basename(path))
@@ -348,6 +351,8 @@ class Trainer(object):
     def save_model(self) -> None:
         self.logger.info('Saving model parameters to %s', self.model_params_path)
         torch.save(self.model.state_dict(), self.model_params_path)
+        self.logger.info('Saving optimizer to %s', self.optim_path)
+        torch.save(self.optimizer.state_dict(), self.optim_path)
 
     def compute_f1(self) -> float:
         # ref_fname = os.path.join(self.save_to, 'reference.txt')
