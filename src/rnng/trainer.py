@@ -224,6 +224,8 @@ class Trainer(object):
         self.speed_meter.add(state['sample'].words.size(1) / elapsed_time)
         if state['train'] and (state['t'] + 1) % self.log_interval == 0:
             f1_score = self.compute_f1()
+            self.ref_trees = []
+            self.hyp_trees = []
             epoch = (state['t'] + 1) / len(state['iterator'])
             loss, _ = self.loss_meter.value()
             speed, _ = self.speed_meter.value()
