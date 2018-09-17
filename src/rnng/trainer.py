@@ -230,6 +230,7 @@ class Trainer(object):
                 self.network, self.train_iterator, self.max_epochs, self.optimizer)
         except KeyboardInterrupt:
             self.logger.info('Training interrupted, aborting')
+            self.save_model()
             self.save_artifacts()
 
     def network(self, sample) -> Tuple[Variable, None]:
