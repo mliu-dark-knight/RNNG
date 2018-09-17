@@ -63,7 +63,8 @@ def make_parser(subparsers=None) -> argparse.ArgumentParser:
     parser.add_argument(
         '--device', type=int, default=-1, help='GPU device to use (default: -1 for CPU)')
     parser.add_argument(
-        '--load-artifacts', type=bool, default=True, help='use saved model insteaf of bulding a new one'
+        '--load-artifacts', default=False, action='store_true',
+        help='use saved model insteaf of bulding a new one'
     )
     parser.set_defaults(func=main)
 
