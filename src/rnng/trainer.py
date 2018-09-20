@@ -234,6 +234,7 @@ class Trainer(object):
         except KeyboardInterrupt:
             self.logger.info('Training interrupted, aborting')
             self.save_model()
+            self.write_trees()
             self.save_artifacts()
 
     def network(self, sample) -> Tuple[Variable, None]:
@@ -355,12 +356,14 @@ class Trainer(object):
         torch.save(self.optimizer.state_dict(), self.optim_path)
 
     def compute_f1(self) -> float:
-        # ref_fname = os.path.join(self.save_to, 'reference.txt')
-        # hyp_fname = os.path.join(self.save_to, 'hypothesis.txt')
-        # with open(ref_fname, 'w') as ref_file, open(hyp_fname, 'w') as hyp_file:
-        #     ref_file.write('\n'.join(self.ref_trees))
-        #     hyp_file.write('\n'.join(self.hyp_trees))
         return compute_f1(self.ref_trees, self.hyp_trees)
+
+    def write_trees(self) -> None:
+        ref_fname = os.path.join(self.save_to, 'reference.txt')
+        hyp_fname = os.path.join(self.save_to, 'hypothesis.txt')
+        with open(ref_fname, 'w') as ref_file, open(hyp_fname, 'w') as hyp_file:
+            ref_file.write('\n'.join(self.ref_trees))
+            hyp_file.write('\n'.join(self.hyp_trees))
 
     @staticmethod
     def squeeze_whitespaces(s: str) -> str:

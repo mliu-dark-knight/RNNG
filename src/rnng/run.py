@@ -15,7 +15,7 @@ def make_parser(subparsers=None) -> argparse.ArgumentParser:
         '-t', '--train-corpus', required=False, default='../../ptb/train-gen.oracle',
         metavar='FILE', help='path to train corpus')
     parser.add_argument(
-        '-d', '--dev-corpus', required=False, default='../../ptb/dev-gen.oracle',
+        '-d', '--dev-corpus', required=False, default='../../ptb/test-gen.oracle',
         metavar='FILE', help='path to dev corpus')
     parser.add_argument(
         '-s', '--save-to', required=False, default='../../model/', metavar='DIR',
