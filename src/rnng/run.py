@@ -12,14 +12,20 @@ def make_parser(subparsers=None) -> argparse.ArgumentParser:
         parser = subparsers.add_parser('train', description=description)
 
     parser.add_argument(
-        '-t', '--train-corpus', required=False, default='../../ptb/train-gen.oracle',
+        '--rnng-type', choices=['DiscRNNG', 'GenRNNG'], metavar='TYPE',
+        default='GenRNNG', help='type of RNNG to train (default: GenRNNG)')
+    parser.add_argument(
+        '-t', '--train-corpus', required=False, default='../../ptb/dev-gen.oracle',
         metavar='FILE', help='path to train corpus')
     parser.add_argument(
         '-d', '--dev-corpus', required=False, default='../../ptb/test-gen.oracle',
         metavar='FILE', help='path to dev corpus')
     parser.add_argument(
-        '-s', '--save-to', required=False, default='../../model/', metavar='DIR',
-        help='directory to save the training artifacts')
+        '--disc-save-to', required=False, default='../../model/DiscRNNG', metavar='DIR',
+        help='directory to save training artifacts of DiscRNNG')
+    parser.add_argument(
+        '--gen-save-to', required=False, default='../../model/GenRNNG', metavar='DIR',
+        help='directory to save training artifacts of GenRNNG')
     parser.add_argument(
         '--encoding', default='utf-8', help='file encoding to use (default: utf-8)')
     parser.add_argument(
@@ -29,19 +35,19 @@ def make_parser(subparsers=None) -> argparse.ArgumentParser:
         '--min-freq', type=int, default=2, metavar='NUMBER',
         help='minimum word frequency to be included in the vocabulary (default: 2)')
     parser.add_argument(
-        '--word-embedding-size', type=int, default=32, metavar='NUMBER',
+        '--word-embedding-size', type=int, default=128, metavar='NUMBER',
         help='dimension of word embeddings (default: 32)')
     parser.add_argument(
-        '--nt-embedding-size', type=int, default=60, metavar='NUMBER',
+        '--nt-embedding-size', type=int, default=16, metavar='NUMBER',
         help='dimension of nonterminal embeddings (default: 12)')
     parser.add_argument(
         '--action-embedding-size', type=int, default=16, metavar='NUMBER',
         help='dimension of action embeddings (default: 16)')
     parser.add_argument(
-        '--input-size', type=int, default=128, metavar='NUMBER',
+        '--input-size', type=int, default=64, metavar='NUMBER',
         help='input dimension of the LSTM parser state encoders (default: 128)')
     parser.add_argument(
-        '--hidden-size', type=int, default=128, metavar='NUMBER',
+        '--hidden-size', type=int, default=64, metavar='NUMBER',
         help='hidden dimension of the LSTM parser state encoders (default: 128)')
     parser.add_argument(
         '--num-layers', type=int, default=2, metavar='NUMBER',
@@ -78,7 +84,9 @@ def main(args: argparse.Namespace) -> None:
     kwargs = vars(args)
     kwargs.pop('func', None)
     train_corpus = kwargs.pop('train_corpus')
-    save_to = kwargs.pop('save_to')
+    disc_save_to = kwargs.pop('disc_save_to')
+    gen_save_to = kwargs.pop('gen_save_to')
+    save_to = {'DiscRNNG': disc_save_to, 'GenRNNG': gen_save_to}
     trainer = Trainer(train_corpus, save_to, **kwargs)
     trainer.run()
 

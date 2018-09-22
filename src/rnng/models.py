@@ -1,4 +1,3 @@
-from typing import Dict
 from typing import List, NamedTuple, Optional, Sequence, Sized, Tuple, Union, cast
 
 import torch
@@ -119,7 +118,7 @@ class StackElement(NamedTuple):
     is_open_nt: bool
 
 
-class DiscRNNG(nn.Module):
+class RNNG(nn.Module):
     MAX_OPEN_NT = 100
     REDUCE_ID = 0
     SHIFT_ID = 1
@@ -289,63 +288,6 @@ class DiscRNNG(nn.Module):
             self._append_history(action_id)
         return llh
 
-    def decode(self, words: Variable) -> Tuple[List[ActionId], Tree]:
-        self._start(words)
-        while not self.finished:
-            log_probs = self._compute_action_log_probs()
-            max_action_id = torch.max(log_probs, dim=0)[1].item()
-            if max_action_id == self.SHIFT_ID:
-                if self._check_shift():
-                    self._shift()
-                else:
-                    raise RuntimeError('most probable action is an illegal one')
-            elif max_action_id == self.REDUCE_ID:
-                if self._check_reduce():
-                    self._reduce()
-                else:
-                    raise RuntimeError('most probable action is an illegal one')
-            else:
-                if self._check_push_nt():
-                    self._push_nt(self._get_nt(max_action_id))
-                else:
-                    raise RuntimeError('most probable action is an illegal one')
-            self._append_history(max_action_id)
-        return list(self._history), self._stack[0].subtree
-
-    def _start(self,
-               words: Variable,
-               actions: Optional[Variable] = None) -> None:
-        # words: (seq_length,)
-        # actions: (action_seq_length,)
-
-        assert words.dim() == 1
-        if actions is not None:
-            assert actions.dim() == 1
-
-        self._stack = []
-        self._buffer = []
-        self._history = []
-        self._num_open_nt = 0
-
-        while len(self.stack_encoder) > 0:
-            self.stack_encoder.pop()
-        while len(self.buffer_encoder) > 0:
-            self.buffer_encoder.pop()
-        while len(self.history_encoder) > 0:
-            self.history_encoder.pop()
-
-        # Feed guards as inputs
-        self.stack_encoder.push(self.stack_guard)
-        self.buffer_encoder.push(self.buffer_guard)
-        self.history_encoder.push(self.history_guard)
-
-        # Initialize input buffer and its LSTM encoder
-        self._prepare_embeddings(words, actions=actions)
-        for word_id in reversed(words.data.tolist()):
-            self._buffer.append(word_id)
-            assert word_id in self._word_emb
-            self.buffer_encoder.push(self._word_emb[word_id])
-
     def _prepare_embeddings(self,
                             words: Variable,
                             actions: Optional[Variable] = None) -> None:
@@ -396,7 +338,7 @@ class DiscRNNG(nn.Module):
         return len(self._buffer) > 0 and self._num_open_nt < self.MAX_OPEN_NT
 
     def _check_shift(self) -> bool:
-        return len(self._buffer) > 0 and self._num_open_nt > 0
+        raise NotImplementedError
 
     def _check_reduce(self) -> bool:
         tos_is_open_nt = len(self._stack) > 0 and self._stack[-1].is_open_nt
@@ -417,17 +359,6 @@ class DiscRNNG(nn.Module):
             StackElement(Tree(nt_id, []), self._nt_emb[nt_id], True))
         self.stack_encoder.push(self._nt_emb[nt_id])
         self._num_open_nt += 1
-
-    def _shift(self) -> None:
-        assert self._check_shift()
-        assert len(self._buffer) > 0
-        assert len(self.buffer_encoder) > 0
-        assert self._buffer[-1] in self._word_emb
-
-        word_id = self._buffer.pop()
-        self.buffer_encoder.pop()
-        self._stack.append(StackElement(word_id, self._word_emb[word_id], False))
-        self.stack_encoder.push(self._word_emb[word_id])
 
     def _reduce(self) -> None:
         assert self._check_reduce()
@@ -492,3 +423,151 @@ class DiscRNNG(nn.Module):
 
     def _new(self, *args, **kwargs) -> torch.FloatTensor:
         return next(self.parameters()).data.new(*args, **kwargs)
+
+
+class DiscRNNG(RNNG):
+    def _check_shift(self) -> bool:
+        return len(self._buffer) > 0 and self._num_open_nt > 0
+
+    def _shift(self) -> None:
+        assert self._check_shift()
+        assert len(self._buffer) > 0
+        assert len(self.buffer_encoder) > 0
+        assert self._buffer[-1] in self._word_emb
+
+        word_id = self._buffer.pop()
+        self.buffer_encoder.pop()
+        self._stack.append(StackElement(word_id, self._word_emb[word_id], False))
+        self.stack_encoder.push(self._word_emb[word_id])
+
+    def decode(self, words: Variable) -> Tuple[List[ActionId], Tree]:
+        self._start(words)
+        while not self.finished:
+            log_probs = self._compute_action_log_probs()
+            max_action_id = torch.max(log_probs, dim=0)[1].item()
+            if max_action_id == self.SHIFT_ID:
+                if self._check_shift():
+                    self._shift()
+                else:
+                    raise RuntimeError('most probable action is an illegal one')
+            elif max_action_id == self.REDUCE_ID:
+                if self._check_reduce():
+                    self._reduce()
+                else:
+                    raise RuntimeError('most probable action is an illegal one')
+            else:
+                if self._check_push_nt():
+                    self._push_nt(self._get_nt(max_action_id))
+                else:
+                    raise RuntimeError('most probable action is an illegal one')
+            self._append_history(max_action_id)
+        return list(self._history), self._stack[0].subtree
+
+    def _start(self,
+               words: Variable,
+               actions: Optional[Variable] = None) -> None:
+        # words: (seq_length,)
+        # actions: (action_seq_length,)
+
+        assert words.dim() == 1
+        if actions is not None:
+            assert actions.dim() == 1
+
+        self._stack = []
+        self._buffer = []
+        self._history = []
+        self._num_open_nt = 0
+
+        while len(self.stack_encoder) > 0:
+            self.stack_encoder.pop()
+        while len(self.buffer_encoder) > 0:
+            self.buffer_encoder.pop()
+        while len(self.history_encoder) > 0:
+            self.history_encoder.pop()
+
+        # Feed guards as inputs
+        self.stack_encoder.push(self.stack_guard)
+        self.buffer_encoder.push(self.buffer_guard)
+        self.history_encoder.push(self.history_guard)
+
+        # Initialize input buffer and its LSTM encoder
+        self._prepare_embeddings(words, actions=actions)
+        for word_id in reversed(words.data.tolist()):
+            self._buffer.append(word_id)
+            assert word_id in self._word_emb
+            self.buffer_encoder.push(self._word_emb[word_id])
+
+
+class GenRNNG(RNNG):
+    def _check_shift(self) -> bool:
+        return len(self._buffer) > 0 and self._num_open_nt > 0
+
+    def _shift(self) -> None:
+        '''
+        This implements _gen in GenRNNG.
+        :return:
+        '''
+        assert self._check_shift()
+        assert len(self._buffer) > 0
+        assert len(self.buffer_encoder) > 0
+        assert self._buffer[-1] in self._word_emb
+
+        word_id = self._buffer.pop()
+        self.buffer_encoder.push(self._word_emb[word_id])
+        self._stack.append(StackElement(word_id, self._word_emb[word_id], False))
+        self.stack_encoder.push(self._word_emb[word_id])
+
+    def decode(self, words: Variable) -> Tuple[List[ActionId], Tree]:
+        self._start(words)
+        while not self.finished:
+            log_probs = self._compute_action_log_probs()
+            max_action_id = torch.max(log_probs, dim=0)[1].item()
+            if max_action_id == self.SHIFT_ID:
+                if self._check_shift():
+                    self._shift()
+                else:
+                    raise RuntimeError('most probable action is an illegal one')
+            elif max_action_id == self.REDUCE_ID:
+                if self._check_reduce():
+                    self._reduce()
+                else:
+                    raise RuntimeError('most probable action is an illegal one')
+            else:
+                if self._check_push_nt():
+                    self._push_nt(self._get_nt(max_action_id))
+                else:
+                    raise RuntimeError('most probable action is an illegal one')
+            self._append_history(max_action_id)
+        return list(self._history), self._stack[0].subtree
+
+    def _start(self,
+               words: Variable,
+               actions: Optional[Variable] = None) -> None:
+        # words: (seq_length,)
+        # actions: (action_seq_length,)
+
+        assert words.dim() == 1
+        if actions is not None:
+            assert actions.dim() == 1
+
+        self._stack = []
+        self._buffer = []
+        self._history = []
+        self._num_open_nt = 0
+
+        while len(self.stack_encoder) > 0:
+            self.stack_encoder.pop()
+        while len(self.buffer_encoder) > 0:
+            self.buffer_encoder.pop()
+        while len(self.history_encoder) > 0:
+            self.history_encoder.pop()
+
+        # Feed guards as inputs
+        self.stack_encoder.push(self.stack_guard)
+        self.buffer_encoder.push(self.buffer_guard)
+        self.history_encoder.push(self.history_guard)
+
+        # Initialize input buffer and its LSTM encoder
+        self._prepare_embeddings(words, actions=actions)
+        for word_id in reversed(words.data.tolist()):
+            self._buffer.append(word_id)

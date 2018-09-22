@@ -16,7 +16,7 @@ from torchtext.data import Dataset, Field
 from rnng.example import make_example
 from rnng.fields import ActionField
 from rnng.iterator import SimpleIterator
-from rnng.models import DiscRNNG
+from rnng.models import RNNG, DiscRNNG, GenRNNG
 from rnng.oracle import Oracle
 from rnng.typing_ import *
 from rnng.utils import add_dummy_pos, id2parsetree, compute_f1
@@ -25,9 +25,10 @@ from rnng.utils import add_dummy_pos, id2parsetree, compute_f1
 class Trainer(object):
     def __init__(self,
                  train_corpus: str,
-                 save_to: str,
+                 save_to: Dict,
                  dev_corpus: Optional[str] = None,
                  encoding: str = 'utf-8',
+                 rnng_type: str = 'GenRNNG',
                  lower: bool = True,
                  min_freq: int = 2,
                  word_embedding_size: int = 32,
@@ -57,7 +58,7 @@ class Trainer(object):
         self.save_to = save_to
         self.dev_corpus = dev_corpus
         self.encoding = encoding
-        self.rnng_type = 'discriminative'
+        self.rnng_type = rnng_type
         self.lower = lower
         self.min_freq = min_freq
         self.word_embedding_size = word_embedding_size
@@ -106,13 +107,19 @@ class Trainer(object):
         torch.manual_seed(self.seed)
 
     def prepare_for_serialization(self) -> None:
-        self.logger.info('Preparing serialization directory in %s', self.save_to)
-        os.makedirs(self.save_to, exist_ok=True)
-        self.fields_dict_path = os.path.join(self.save_to, 'fields_dict.pkl')
-        self.model_metadata_path = os.path.join(self.save_to, 'model_metadata.json')
-        self.model_params_path = os.path.join(self.save_to, 'model_params.pth')
-        self.optim_path = os.path.join(self.save_to, 'optim.pth')
-        self.artifacts_path = os.path.join(self.save_to, 'artifacts.tar.gz')
+        self.fields_dict_path = {}
+        self.model_metadata_path = {}
+        self.model_params_path = {}
+        self.optim_path = {}
+        self.artifacts_path = {}
+        for rnng_type, save_to in self.save_to.items():
+            self.logger.info('Preparing serialization directory for %s in %s' % (rnng_type, save_to))
+            os.makedirs(save_to, exist_ok=True)
+            self.fields_dict_path[rnng_type] = os.path.join(save_to, 'fields_dict.pkl')
+            self.model_metadata_path[rnng_type] = os.path.join(save_to, 'model_metadata.json')
+            self.model_params_path[rnng_type] = os.path.join(save_to, 'model_params.pth')
+            self.optim_path[rnng_type] = os.path.join(save_to, 'optim.pth')
+            self.artifacts_path[rnng_type] = os.path.join(save_to, 'artifacts.tar.gz')
 
     def init_fields(self) -> None:
         self.WORDS = Field(pad_token=None, lower=self.lower)
@@ -138,7 +145,7 @@ class Trainer(object):
 
     def load_fields_vocabularies(self) -> None:
         self.logger.info('Loading vocabularies')
-        fields = torch.load(self.fields_dict_path, pickle_module=dill)
+        fields = torch.load(self.fields_dict_path[self.rnng_type], pickle_module=dill)
         self.WORDS = fields['words']
         self.POS_TAGS = fields['pos_tags']
         self.NONTERMS = fields['nonterms']
@@ -164,23 +171,24 @@ class Trainer(object):
             'Found %d words, %d POS tags, %d nonterminals, and %d actions',
             self.num_words, self.num_pos, self.num_nt, self.num_actions)
 
-        self.logger.info('Saving fields dict to %s', self.fields_dict_path)
-        torch.save(dict(self.fields), self.fields_dict_path, pickle_module=dill)
+        self.logger.info('Saving fields dict to %s', self.fields_dict_path[self.rnng_type])
+        torch.save(dict(self.fields), self.fields_dict_path[self.rnng_type], pickle_module=dill)
 
-    def load_model(self) -> None:
-        self.logger.info('Loading model')
-        with open(self.model_metadata_path) as f:
+    def load_model(self, rnng_type) -> (RNNG, optim.Optimizer):
+        self.logger.info(f'Loading model {rnng_type}')
+        with open(self.model_metadata_path[rnng_type]) as f:
             metadata = json.load(f)
             model_args = metadata['args']
             model_kwargs = metadata['kwargs']
-        self.model = DiscRNNG(*model_args, **model_kwargs)
+        model = eval(rnng_type)(*model_args, **model_kwargs)
         if self.device >= 0:
-            self.model.cuda(self.device)
-        self.model.load_state_dict(torch.load(self.model_params_path))
+            model.cuda(self.device)
+        model.load_state_dict(torch.load(self.model_params_path[rnng_type]))
 
-        self.logger.info('Loading optimizer')
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        self.optimizer.load_state_dict(torch.load(self.optim_path))
+        self.logger.info(f'Loading optimizer {rnng_type}')
+        optimizer = optim.Adam(model.parameters(), lr=self.learning_rate)
+        optimizer.load_state_dict(torch.load(self.optim_path[rnng_type]))
+        return model, optimizer
 
     def build_model(self) -> None:
         self.logger.info('Building model')
@@ -195,12 +203,12 @@ class Trainer(object):
             num_layers=self.num_layers,
             dropout=self.dropout
         )
-        self.model = DiscRNNG(*model_args, **model_kwargs)
+        self.model = eval(self.rnng_type)(*model_args, **model_kwargs)
         if self.device >= 0:
             self.model.cuda(self.device)
 
-        self.logger.info('Saving model metadata to %s', self.model_metadata_path)
-        with open(self.model_metadata_path, 'w') as f:
+        self.logger.info('Saving model metadata to %s', self.model_metadata_path[self.rnng_type])
+        with open(self.model_metadata_path[self.rnng_type], 'w') as f:
             json.dump({'args': model_args, 'kwargs': model_kwargs}, f, sort_keys=True, indent=2)
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
@@ -216,7 +224,7 @@ class Trainer(object):
             self.init_fields()
         self.process_corpora()
         if self.load_artifacts:
-            self.load_model()
+            self.model, self.optimizer = self.load_model(self.rnng_type)
         else:
             self.build_vocabularies()
             self.build_model()
@@ -243,12 +251,13 @@ class Trainer(object):
         llh = self.model(words, actions)
         training = self.model.training
         self.model.eval()
-        _, hyp_tree = self.model.decode(words)
-        self.model.train(training)
-        hyp_tree = id2parsetree(
-            hyp_tree, self.NONTERMS.vocab.itos, self.WORDS.vocab.itos)
-        hyp_tree = add_dummy_pos(hyp_tree)
-        self.hyp_trees.append(self.squeeze_whitespaces(str(hyp_tree)))
+        if self.rnng_type == 'DiscRNNG':
+            _, hyp_tree = self.model.decode(words)
+            self.model.train(training)
+            hyp_tree = id2parsetree(
+                hyp_tree, self.NONTERMS.vocab.itos, self.WORDS.vocab.itos)
+            hyp_tree = add_dummy_pos(hyp_tree)
+            self.hyp_trees.append(self.squeeze_whitespaces(str(hyp_tree)))
         return -llh, None
 
     def on_start(self, state: dict) -> None:
@@ -265,47 +274,62 @@ class Trainer(object):
 
     def on_sample(self, state: dict) -> None:
         self.batch_timer.reset()
-        sample = state['sample']
-        actions = [self.ACTIONS.vocab.itos[x] for x in sample.actions.squeeze(1).data]
-        pos_tags = [self.POS_TAGS.vocab.itos[x] for x in sample.pos_tags.squeeze(1).data]
-        words = [self.WORDS.vocab.itos[x] for x in sample.words.squeeze(1).data]
-        tree = Oracle(actions, pos_tags, words).to_tree()
-        self.ref_trees.append(self.squeeze_whitespaces(str(tree)))
+        if self.rnng_type == 'DiscRNNG':
+            sample = state['sample']
+            actions = [self.ACTIONS.vocab.itos[x] for x in sample.actions.squeeze(1).data]
+            pos_tags = [self.POS_TAGS.vocab.itos[x] for x in sample.pos_tags.squeeze(1).data]
+            words = [self.WORDS.vocab.itos[x] for x in sample.words.squeeze(1).data]
+            tree = Oracle(actions, pos_tags, words).to_tree()
+            self.ref_trees.append(self.squeeze_whitespaces(str(tree)))
 
     def on_forward(self, state: dict) -> None:
         elapsed_time = self.batch_timer.value()
         self.loss_meter.add(state['loss'].item())
         self.speed_meter.add(state['sample'].words.size(1) / elapsed_time)
         if state['train'] and (state['t'] + 1) % self.log_interval == 0:
-            f1_score = self.compute_f1()
-            self.ref_trees = []
-            self.hyp_trees = []
             epoch = (state['t'] + 1) / len(state['iterator'])
             loss, _ = self.loss_meter.value()
             speed, _ = self.speed_meter.value()
-            self.logger.info(
-                'Epoch %.4f (%.4fs): %.2f samples/sec | loss %.4f | F1 %.2f',
-                epoch, elapsed_time, speed, loss, f1_score)
+            if self.rnng_type == 'DiscRNNG':
+                f1_score = self.compute_f1()
+                self.ref_trees = []
+                self.hyp_trees = []
+                self.logger.info(
+                    'Epoch %.4f (%.4fs): %.2f samples/sec | loss %.4f | F1 %.2f',
+                    epoch, elapsed_time, speed, loss, f1_score)
+            else:
+                self.logger.info(
+                    'Epoch %.4f (%.4fs): %.2f samples/sec | loss %.4f',
+                    epoch, elapsed_time, speed, loss)
 
     def on_end_epoch(self, state: dict) -> None:
         iterator = SimpleIterator(self.train_dataset, train=False, device=self.device)
         self.engine.test(self.network, iterator)
-        f1_score = self.compute_f1()
         epoch = state['epoch']
         elapsed_time = self.epoch_timer.value()
         loss, _ = self.loss_meter.value()
         speed, _ = self.speed_meter.value()
-        self.logger.info('Epoch %d done (%.4fs): %.2f samples/sec | loss %.4f | F1 %.2f',
-                         epoch, elapsed_time, speed, loss, f1_score)
+        if self.rnng_type == 'DiscRNNG':
+            f1_score = self.compute_f1()
+            self.logger.info('Epoch %d done (%.4fs): %.2f samples/sec | loss %.4f | F1 %.2f',
+                             epoch, elapsed_time, speed, loss, f1_score)
+        else:
+            self.logger.info('Epoch %d done (%.4fs): %.2f samples/sec | loss %.4f',
+                             epoch, elapsed_time, speed, loss)
         self.save_model()
         if self.dev_iterator is not None:
             self.engine.test(self.network, self.dev_iterator)
-            f1_score = self.compute_f1()
             loss, _ = self.loss_meter.value()
             speed, _ = self.speed_meter.value()
-            self.logger.info(
-                'Evaluating on dev corpus: %.2f samples/sec | loss %.4f | F1 %.2f',
-                speed, loss, f1_score)
+            if self.rnng_type == 'DiscRNNG':
+                f1_score = self.compute_f1()
+                self.logger.info(
+                    'Evaluating on dev corpus: %.2f samples/sec | loss %.4f | F1 %.2f',
+                    speed, loss, f1_score)
+            else:
+                self.logger.info(
+                    'Evaluating on dev corpus: %.2f samples/sec | loss %.4f',
+                    speed, loss)
 
     def on_end(self, state: dict) -> None:
         if state['train']:
@@ -342,25 +366,29 @@ class Trainer(object):
         self.hyp_trees = []
 
     def save_artifacts(self) -> None:
-        self.logger.info('Saving training artifacts to %s', self.artifacts_path)
-        with tarfile.open(self.artifacts_path, 'w:gz') as f:
+        self.logger.info('Saving training artifacts to %s', self.artifacts_path[self.rnng_type])
+        with tarfile.open(self.artifacts_path[self.rnng_type], 'w:gz') as f:
             artifact_names = 'fields_dict model_metadata model_params optim'.split()
             for name in artifact_names:
-                path = getattr(self, f'{name}_path')
+                path = getattr(self, f'{name}_path')[self.rnng_type]
                 f.add(path, arcname=os.path.basename(path))
 
     def save_model(self) -> None:
-        self.logger.info('Saving model parameters to %s', self.model_params_path)
-        torch.save(self.model.state_dict(), self.model_params_path)
-        self.logger.info('Saving optimizer to %s', self.optim_path)
-        torch.save(self.optimizer.state_dict(), self.optim_path)
+        '''
+        Do not override other types of RNNG
+        :return:
+        '''
+        self.logger.info('Saving model parameters to %s', self.model_params_path[self.rnng_type])
+        torch.save(self.model.state_dict(), self.model_params_path[self.rnng_type])
+        self.logger.info('Saving optimizer to %s', self.optim_path[self.rnng_type])
+        torch.save(self.optimizer.state_dict(), self.optim_path[self.rnng_type])
 
     def compute_f1(self) -> float:
         return compute_f1(self.ref_trees, self.hyp_trees)
 
     def write_trees(self) -> None:
-        ref_fname = os.path.join(self.save_to, 'reference.txt')
-        hyp_fname = os.path.join(self.save_to, 'hypothesis.txt')
+        ref_fname = os.path.join(self.save_to['DiscRNNG'], 'reference.txt')
+        hyp_fname = os.path.join(self.save_to['DiscRNNG'], 'hypothesis.txt')
         with open(ref_fname, 'w') as ref_file, open(hyp_fname, 'w') as hyp_file:
             ref_file.write('\n'.join(self.ref_trees))
             hyp_file.write('\n'.join(self.hyp_trees))
