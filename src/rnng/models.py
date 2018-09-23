@@ -174,7 +174,7 @@ class RNNG(nn.Module):
 
 		self.fwdbwd2composed = nn.Sequential(
 			nn.Linear(2 * self.input_size, self.input_size),
-			nn.Dropout(),
+			nn.Dropout(self.dropout),
 			nn.ReLU(),
 		)
 		self.encoders2summary = nn.Sequential(
