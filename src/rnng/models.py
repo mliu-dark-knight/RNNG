@@ -253,6 +253,33 @@ class RNNG(nn.Module):
 	def decode(self, words: Variable) -> Tuple[List[ActionId], Tree]:
 		raise NotImplementedError
 
+	def _prepare_embeddings(self,
+	                        words: Variable,
+	                        actions: Variable) -> None:
+		# words: (seq_length,)
+		# actions: (action_seq_length,)
+
+		assert words.dim() == 1
+		if actions is not None:
+			assert actions.dim() == 1
+
+		if actions is None:
+			actions = Variable(
+				self._new(range(self.num_actions)), volatile=not self.training).long()
+		nonterms = Variable(
+			self._new(range(self.num_nt)), volatile=not self.training).long()
+
+		word_embs = self.word_embedding(
+			words.view(1, -1)).view(-1, self.input_size)
+		nt_embs = self.nt_embedding(
+			nonterms.view(1, -1)).view(-1, self.input_size)
+		action_embs = self.action_embedding(
+			actions.view(1, -1)).view(-1, self.input_size)
+
+		self._word_emb = dict(zip(words.data.tolist(), word_embs))
+		self._nt_emb = dict(zip(nonterms.data.tolist(), nt_embs))
+		self._action_emb = dict(zip(actions.data.tolist(), action_embs))
+
 	def _compute_action_log_probs(self) -> Variable:
 		assert self.stack_encoder.top is not None
 		assert self.buffer_encoder.top is not None
@@ -281,14 +308,14 @@ class RNNG(nn.Module):
 
 	def _append_history(self, action_id: ActionId) -> None:
 		self._history.append(action_id)
-		self.history_encoder.push(self.action_embedding(torch.tensor(action_id)))
+		self.history_encoder.push(self._action_emb[action_id])
 
 	def _push_nt(self, nt_id: NTId) -> None:
 		assert self._check_push_nt()
 
 		self._stack.append(
-			StackElement(Tree(nt_id, []), self.nt_embedding(torch.tensor(nt_id)), True))
-		self.stack_encoder.push(self.nt_embedding(torch.tensor(nt_id)))
+			StackElement(Tree(nt_id, []), self._nt_emb[nt_id], True))
+		self.stack_encoder.push(self._nt_emb[nt_id])
 		self._num_open_nt += 1
 
 	def _shift(self) -> None:
@@ -370,8 +397,8 @@ class DiscRNNG(RNNG):
 
 		word_id = self._buffer.pop()
 		self.buffer_encoder.pop()
-		self._stack.append(StackElement(word_id, self.word_embedding(torch.tensor(word_id)), False))
-		self.stack_encoder.push(self.word_embedding(torch.tensor(word_id)))
+		self._stack.append(StackElement(word_id, self._word_emb[word_id], False))
+		self.stack_encoder.push(self._word_emb[word_id])
 
 	def decode(self, words: Variable) -> Tuple[List[ActionId], Tree]:
 		self._start(words)
@@ -424,9 +451,10 @@ class DiscRNNG(RNNG):
 		self.history_encoder.push(self.history_guard)
 
 		# Initialize input buffer and its LSTM encoder
+		self._prepare_embeddings(words, actions)
 		for word_id in reversed(words.data.tolist()):
 			self._buffer.append(word_id)
-			self.buffer_encoder.push(self.word_embedding(torch.tensor(word_id)))
+			self.buffer_encoder.push(self._word_emb[word_id])
 
 	def compute_llh(self,
 	                words: Variable,
@@ -473,9 +501,9 @@ class GenRNNG(RNNG):
 		assert len(self.buffer_encoder) > 0
 
 		word_id = self._buffer.pop()
-		self.buffer_encoder.push(self.word_embedding(torch.tensor(word_id)))
-		self._stack.append(StackElement(word_id, self.word_embedding(torch.tensor(word_id)), False))
-		self.stack_encoder.push(self.word_embedding(torch.tensor(word_id)))
+		self.buffer_encoder.push(self._word_emb[word_id])
+		self._stack.append(StackElement(word_id, self._word_emb[word_id], False))
+		self.stack_encoder.push(self._word_emb[word_id])
 
 	def _compute_word_log_probs(self):
 		assert self.stack_encoder.top is not None
@@ -539,6 +567,7 @@ class GenRNNG(RNNG):
 		self.history_encoder.push(self.history_guard)
 
 		# Initialize input buffer and its LSTM encoder
+		self._prepare_embeddings(words, actions)
 		for word_id in reversed(words.data.tolist()):
 			self._buffer.append(word_id)
 
