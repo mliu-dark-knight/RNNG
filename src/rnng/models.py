@@ -327,17 +327,21 @@ class RNNG(nn.Module):
 		children = []
 		while len(self._stack) > 0 and not self._stack[-1].is_open_nt:
 			children.append(self._stack.pop()[:-1])
+			self.stack_encoder.pop()
 		assert len(children) > 0
 		assert len(self._stack) > 0
+		assert len(self.stack_encoder) > 0
 
 		children.reverse()
 		child_subtrees, child_embs = zip(*children)
 		open_nt = self._stack.pop()
+		self.stack_encoder.pop()
 		assert isinstance(open_nt.subtree, Tree)
 		parent_subtree = cast(Tree, open_nt.subtree)
 		parent_subtree.extend(child_subtrees)
 		composed_emb = self._compose(open_nt.emb, child_embs)
 		self._stack.append(StackElement(parent_subtree, composed_emb, False))
+		self.stack_encoder.push(composed_emb)
 		self._num_open_nt -= 1
 		assert self._num_open_nt >= 0
 
