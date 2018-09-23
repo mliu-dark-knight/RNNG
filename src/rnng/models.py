@@ -218,8 +218,8 @@ class RNNG(nn.Module):
 
 		init.kaiming_normal_(self.fwdbwd2composed[0].weight)
 		init.constant_(self.fwdbwd2composed[0].bias, 0.)
-		init.kaiming_normal_(self.encoders2summary[1].weight)
-		init.constant_(self.encoders2summary[1].bias, 0.)
+		init.kaiming_normal_(self.encoders2summary[0].weight)
+		init.constant_(self.encoders2summary[0].bias, 0.)
 		init.kaiming_normal_(self.summary2actionlogprobs.weight)
 		init.constant_(self.summary2actionlogprobs.bias, 0.)
 
