@@ -174,11 +174,12 @@ class RNNG(nn.Module):
 
 		self.fwdbwd2composed = nn.Sequential(
 			nn.Linear(2 * self.input_size, self.input_size),
+			nn.Dropout(),
 			nn.ReLU(),
 		)
 		self.encoders2summary = nn.Sequential(
-			nn.Dropout(self.dropout),
 			nn.Linear(3 * self.hidden_size, self.hidden_size),
+			nn.Dropout(self.dropout),
 			nn.ReLU(),
 		)
 		self.summary2actionlogprobs = nn.Linear(self.hidden_size, self.num_actions)
@@ -363,8 +364,8 @@ class RNNG(nn.Module):
 		fwd_output, _ = self.fwd_composer(fwd_input)
 		bwd_output, _ = self.bwd_composer(bwd_input)
 		# (input_size,)
-		fwd_emb = F.dropout(fwd_output[-1, 0], p=self.dropout, training=self.training)
-		bwd_emb = F.dropout(bwd_output[-1, 0], p=self.dropout, training=self.training)
+		fwd_emb = fwd_output[-1, 0]
+		bwd_emb = bwd_output[-1, 0]
 		# (input_size,)
 		return self.fwdbwd2composed(torch.cat([fwd_emb, bwd_emb]).view(1, -1)).view(-1)
 
