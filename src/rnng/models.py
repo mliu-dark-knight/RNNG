@@ -455,21 +455,27 @@ class DiscRNNG(RNNG):
 		return llh
 
 
-
 class GenRNNG(RNNG):
+	def __init__(self, *args, **kwargs):
+		RNNG.__init__(self, *args, **kwargs)
+
+		self.summary2wordlogprobs = nn.Linear(self.hidden_size, self.num_words)
+
+		init.kaiming_normal_(self.summary2wordlogprobs.weight)
+		init.constant_(self.summary2wordlogprobs.bias, 0.)
+
 	def _check_shift(self) -> bool:
 		return len(self._buffer) > 0 and self._num_open_nt > 0
 
-	def _shift(self) -> None:
+	def _gen(self) -> None:
 		assert self._check_shift()
 		assert len(self._buffer) > 0
 		assert len(self.buffer_encoder) > 0
-		assert self._buffer[-1] in self._word_emb
 
 		word_id = self._buffer.pop()
-		self.buffer_encoder.push(self._word_emb[word_id])
-		self._stack.append(StackElement(word_id, self._word_emb[word_id], False))
-		self.stack_encoder.push(self._word_emb[word_id])
+		self.buffer_encoder.push(self.word_embedding(torch.tensor(word_id)))
+		self._stack.append(StackElement(word_id, self.word_embedding(torch.tensor(word_id)), False))
+		self.stack_encoder.push(self.word_embedding(torch.tensor(word_id)))
 
 	def _compute_word_log_probs(self):
 		assert self.stack_encoder.top is not None
@@ -480,11 +486,7 @@ class GenRNNG(RNNG):
 			self.stack_encoder.top, self.buffer_encoder.top, self.history_encoder.top
 		]).view(1, -1)
 		summary = self.encoders2summary(concatenated)
-		illegal_actions = self._get_illegal_actions()
-		return log_softmax(
-			self.summary2actionlogprobs(summary),
-			restrictions=illegal_actions
-		).view(-1)
+		return log_softmax(self.summary2wordlogprobs(summary)).view(-1)
 
 	def decode(self, words: Variable) -> Tuple[List[ActionId], Tree]:
 		self._start(words)
@@ -493,7 +495,7 @@ class GenRNNG(RNNG):
 			max_action_id = torch.max(log_probs, dim=0)[1].item()
 			if max_action_id == self.SHIFT_ID:
 				if self._check_shift():
-					self._shift()
+					self._gen()
 				else:
 					raise RuntimeError('most probable action is an illegal one')
 			elif max_action_id == self.REDUCE_ID:
@@ -539,3 +541,31 @@ class GenRNNG(RNNG):
 		# Initialize input buffer and its LSTM encoder
 		for word_id in reversed(words.data.tolist()):
 			self._buffer.append(word_id)
+
+	def compute_llh(self,
+	                words: Variable,
+	                actions: Variable) -> Variable:
+		llh = 0.
+		for action in actions:
+			log_probs = self._compute_action_log_probs()
+			llh += log_probs[action]
+			action_id = action.item()
+			if action_id == self.SHIFT_ID:
+				if self._check_shift():
+					word_id = self._buffer[-1]
+					llh += self._compute_word_log_probs()[word_id]
+					self._gen()
+				else:
+					break
+			elif action_id == self.REDUCE_ID:
+				if self._check_reduce():
+					self._reduce()
+				else:
+					break
+			else:
+				if self._check_push_nt():
+					self._push_nt(self._get_nt(action_id))
+				else:
+					break
+			self._append_history(action_id)
+		return llh
