@@ -13,9 +13,9 @@ def make_parser(subparsers=None) -> argparse.ArgumentParser:
 
 	parser.add_argument(
 		'--rnng-type', choices=['DiscRNNG', 'GenRNNG'], metavar='TYPE',
-		default='GenRNNG', help='type of RNNG to train (default: GenRNNG)')
+		default='DiscRNNG', help='type of RNNG to train (default: GenRNNG)')
 	parser.add_argument(
-		'-t', '--train-corpus', required=False, default='../../ptb/dev-gen.oracle',
+		'-t', '--train-corpus', required=False, default='../../ptb/train-gen.oracle',
 		metavar='FILE', help='path to train corpus')
 	parser.add_argument(
 		'-d', '--dev-corpus', required=False, default='../../ptb/test-gen.oracle',
