@@ -250,7 +250,8 @@ class RNNG(nn.Module):
 		# actions: (action_seq_length,)
 		raise NotImplementedError
 
-	def decode(self, words: Variable) -> Tuple[List[ActionId], Tree]:
+	def decode(self,
+	           words: Variable) -> Tuple[List[ActionId], Tree]:
 		raise NotImplementedError
 
 	def _prepare_embeddings(self,
@@ -404,11 +405,12 @@ class DiscRNNG(RNNG):
 		self._stack.append(StackElement(word_id, self._word_emb[word_id], False))
 		self.stack_encoder.push(self._word_emb[word_id])
 
-	def decode(self, words: Variable) -> Tuple[List[ActionId], Tree]:
+	def decode(self,
+	           words: Variable) -> Tuple[List[ActionId], Tree]:
 		self._start(words)
 		while not self.finished:
 			log_probs = self._compute_action_log_probs()
-			max_action_id = torch.max(log_probs, dim=0)[1].item()
+			max_action_id = torch.argmax(log_probs, dim=0).item()
 			if max_action_id == self.SHIFT_ID:
 				if self._check_shift():
 					self._shift()
@@ -509,6 +511,16 @@ class GenRNNG(RNNG):
 		self._stack.append(StackElement(word_id, self._word_emb[word_id], False))
 		self.stack_encoder.push(self._word_emb[word_id])
 
+	def _gen_decode(self, gen_word_id) -> None:
+		assert self._check_shift()
+		assert len(self._buffer) > 0
+		assert len(self.buffer_encoder) > 0
+
+		word_id = self._buffer.pop()
+		self.buffer_encoder.push(self._word_emb[word_id])
+		self._stack.append(StackElement(gen_word_id, self.word_embedding(torch.tensor(gen_word_id)), False))
+		self.stack_encoder.push(self._word_emb[word_id])
+
 	def _compute_word_log_probs(self):
 		assert self.stack_encoder.top is not None
 		assert self.buffer_encoder.top is not None
@@ -520,14 +532,16 @@ class GenRNNG(RNNG):
 		summary = self.encoders2summary(concatenated)
 		return log_softmax(self.summary2wordlogprobs(summary)).view(-1)
 
-	def decode(self, words: Variable) -> Tuple[List[ActionId], Tree]:
+	def decode(self,
+	           words: Variable) -> Tuple[List[ActionId], Tree]:
 		self._start(words)
 		while not self.finished:
 			log_probs = self._compute_action_log_probs()
-			max_action_id = torch.max(log_probs, dim=0)[1].item()
+			max_action_id = torch.argmax(log_probs, dim=0).item()
 			if max_action_id == self.SHIFT_ID:
 				if self._check_shift():
-					self._gen()
+					max_word_id = torch.argmax(self._compute_word_log_probs()).item()
+					self._gen_decode(max_word_id)
 				else:
 					raise RuntimeError('most probable action is an illegal one')
 			elif max_action_id == self.REDUCE_ID:

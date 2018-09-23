@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 import torchnet as tnt
+from nltk.tree import Tree
 from torch.autograd import Variable
 from torchtext.data import Dataset, Field
 
@@ -246,6 +247,8 @@ class Trainer(object):
 		except KeyboardInterrupt:
 			self.logger.info('Training interrupted, aborting')
 			self.save_model()
+			if self.rnng_type == 'GenRNNG':
+				self.hyp_trees = self.generate_trees()
 			self.write_trees()
 			self.save_artifacts()
 
@@ -256,15 +259,11 @@ class Trainer(object):
 		training = self.model.training
 		self.model.eval()
 		if self.rnng_type == 'DiscRNNG':
-			_, hyp_tree = self.model.decode(words)
-			self.model.train(training)
-			hyp_tree = id2parsetree(
-				hyp_tree, self.NONTERMS.vocab.itos, self.WORDS.vocab.itos)
-			hyp_tree = add_dummy_pos(hyp_tree)
+			hyp_tree = self.generate_tree(words)
 			self.hyp_trees.append(self.squeeze_whitespaces(str(hyp_tree)))
 		else:
-			self.model.train(training)
 			self.estimate_llh.append(llh.item())
+		self.model.train(training)
 		return -llh, None
 
 	def on_start(self, state: dict) -> None:
@@ -409,9 +408,26 @@ class Trainer(object):
 		q = np.array(self.proposal_llh)
 		return np.exp(-np.average(p - q))
 
+	def generate_trees(self) -> List[str]:
+		self.model.eval()
+		hyp_trees = []
+		for i, sample in enumerate(self.dev_iterator):
+			if i >= self.log_interval:
+				break
+			words = sample.words.squeeze(1)
+			hyp_trees.append(self.squeeze_whitespaces(str(self.generate_tree(words))))
+		return hyp_trees
+
+	def generate_tree(self, words: List[Word]) -> Tree:
+		_, hyp_tree = self.model.decode(words)
+		hyp_tree = id2parsetree(
+			hyp_tree, self.NONTERMS.vocab.itos, self.WORDS.vocab.itos)
+		hyp_tree = add_dummy_pos(hyp_tree)
+		return hyp_tree
+
 	def write_trees(self) -> None:
-		ref_fname = os.path.join(self.save_to['DiscRNNG'], 'reference.txt')
-		hyp_fname = os.path.join(self.save_to['DiscRNNG'], 'hypothesis.txt')
+		ref_fname = os.path.join(self.save_to[self.rnng_type], 'reference.txt')
+		hyp_fname = os.path.join(self.save_to[self.rnng_type], 'hypothesis.txt')
 		with open(ref_fname, 'w') as ref_file, open(hyp_fname, 'w') as hyp_file:
 			ref_file.write('\n'.join(self.ref_trees))
 			hyp_file.write('\n'.join(self.hyp_trees))
