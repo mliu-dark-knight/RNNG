@@ -513,6 +513,11 @@ class GenRNNG(RNNG):
 		self.stack_encoder.push(self._word_emb[word_id])
 
 	def _gen_decode(self, gen_word_id) -> None:
+		'''
+		This function can only be called on CPU
+		:param gen_word_id:
+		:return:
+		'''
 		assert self._check_shift()
 		assert len(self._buffer) > 0
 		assert len(self.buffer_encoder) > 0
