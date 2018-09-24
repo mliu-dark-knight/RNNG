@@ -524,7 +524,7 @@ class GenRNNG(RNNG):
 
 		word_id = self._buffer.pop()
 		self.buffer_encoder.push(self._word_emb[word_id])
-		self._stack.append(StackElement(gen_word_id, self.word_embedding(torch.tensor(gen_word_id)), False))
+		self._stack.append(StackElement(gen_word_id, self.word_embedding(Variable(gen_word_id)), False))
 		self.stack_encoder.push(self._word_emb[word_id])
 
 	def _compute_word_log_probs(self):

@@ -248,7 +248,6 @@ class Trainer(object):
 			self.logger.info('Training interrupted, aborting')
 			self.save_model()
 			if self.rnng_type == 'GenRNNG':
-				self.model.cpu()
 				self.hyp_trees = self.generate_trees()
 			self.write_trees()
 			self.save_artifacts()
