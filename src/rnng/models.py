@@ -512,7 +512,8 @@ class GenRNNG(RNNG):
 		self._stack.append(StackElement(word_id, self._word_emb[word_id], False))
 		self.stack_encoder.push(self._word_emb[word_id])
 
-	def _gen_decode(self, gen_word_id) -> None:
+	def _gen_decode(self,
+	                gen_word_id: Variable) -> None:
 		'''
 		This function can only be called on CPU
 		:param gen_word_id:
@@ -524,7 +525,7 @@ class GenRNNG(RNNG):
 
 		word_id = self._buffer.pop()
 		self.buffer_encoder.push(self._word_emb[word_id])
-		self._stack.append(StackElement(gen_word_id, self.word_embedding(Variable(gen_word_id)), False))
+		self._stack.append(StackElement(gen_word_id.item(), self.word_embedding(gen_word_id), False))
 		self.stack_encoder.push(self._word_emb[word_id])
 
 	def _compute_word_log_probs(self):
@@ -546,7 +547,7 @@ class GenRNNG(RNNG):
 			max_action_id = torch.argmax(log_probs, dim=0).item()
 			if max_action_id == self.SHIFT_ID:
 				if self._check_shift():
-					max_word_id = torch.argmax(self._compute_word_log_probs()).item()
+					max_word_id = torch.argmax(self._compute_word_log_probs())
 					self._gen_decode(max_word_id)
 				else:
 					raise RuntimeError('most probable action is an illegal one')

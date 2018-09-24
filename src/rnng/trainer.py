@@ -418,7 +418,7 @@ class Trainer(object):
 			hyp_trees.append(self.squeeze_whitespaces(str(self.generate_tree(words))))
 		return hyp_trees
 
-	def generate_tree(self, words: List[Word]) -> Tree:
+	def generate_tree(self, words: Variable) -> Tree:
 		_, hyp_tree = self.model.decode(words)
 		hyp_tree = id2parsetree(
 			hyp_tree, self.NONTERMS.vocab.itos, self.WORDS.vocab.itos)
