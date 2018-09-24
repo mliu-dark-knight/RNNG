@@ -262,7 +262,7 @@ class Trainer(object):
 			hyp_tree = self.generate_tree(words)
 			self.hyp_trees.append(self.squeeze_whitespaces(str(hyp_tree)))
 		else:
-			self.estimate_llh.append(llh.item())
+			self.estimate_llh.append(llh.item() / len(words))
 		self.model.train(training)
 		return -llh, None
 
@@ -292,7 +292,7 @@ class Trainer(object):
 			words = sample.words.squeeze(1)
 			actions = sample.actions.squeeze(1)
 			llh = self.disc_model(words, actions)
-			self.proposal_llh.append(llh.item())
+			self.proposal_llh.append(llh.item() / len(words))
 
 	def on_forward(self, state: dict) -> None:
 		elapsed_time = self.batch_timer.value()
